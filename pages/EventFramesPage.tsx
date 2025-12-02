@@ -309,13 +309,12 @@ const EventFramesPage: React.FC = () => {
     // Touch handlers for pan, zoom, and rotate
     const handleTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
         if (!userImage) return;
-        e.preventDefault();
         const touches = e.touches;
         if (touches.length === 1) {
             setIsDragging(true);
-            setDragStart({ x: touches[0].clientX, y: touches[0].clientY });
+            const rect = e.currentTarget.getBoundingClientRect();
+            setDragStart({ x: touches[0].clientX - rect.left, y: touches[0].clientY - rect.top });
         } else if (touches.length === 2) {
-            setIsDragging(false); // Stop panning when a second finger is added
             pinchStateRef.current = {
                 initialPinchDistance: getDistance(touches),
                 initialRotationAngle: getAngle(touches),
@@ -327,190 +326,154 @@ const EventFramesPage: React.FC = () => {
 
     const handleTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
         if (!userImage) return;
-        e.preventDefault();
         const touches = e.touches;
         if (touches.length === 1 && isDragging) {
-            const touch = touches[0];
-            const dx = touch.clientX - dragStart.x;
-            const dy = touch.clientY - dragStart.y;
+            const rect = e.currentTarget.getBoundingClientRect();
+            const currentX = touches[0].clientX - rect.left;
+            const currentY = touches[0].clientY - rect.top;
+            const dx = currentX - dragStart.x;
+            const dy = currentY - dragStart.y;
             setOffset(prev => ({ x: prev.x + dx, y: prev.y + dy }));
-            setDragStart({ x: touch.clientX, y: touch.clientY });
+            setDragStart({ x: currentX, y: currentY });
         } else if (touches.length === 2) {
-            // Pinch to zoom
-            const { initialPinchDistance, initialZoom } = pinchStateRef.current;
-            const newPinchDistance = getDistance(touches);
-            const zoomFactor = newPinchDistance / initialPinchDistance;
-            const newZoom = Math.max(0.5, Math.min(initialZoom * zoomFactor, 3));
-            setZoom(newZoom);
+            const { initialPinchDistance, initialRotationAngle, initialZoom, initialRotation } = pinchStateRef.current;
+            
+            const currentPinchDistance = getDistance(touches);
+            const zoomFactor = currentPinchDistance / initialPinchDistance;
+            setZoom(initialZoom * zoomFactor);
 
-            // Rotate
-            const { initialRotationAngle, initialRotation } = pinchStateRef.current;
-            const newAngle = getAngle(touches);
-            const angleDiff = newAngle - initialRotationAngle;
-            let newRotation = initialRotation + angleDiff;
-            setRotation(newRotation);
+            const currentRotationAngle = getAngle(touches);
+            const rotationDelta = currentRotationAngle - initialRotationAngle;
+            setRotation(initialRotation + rotationDelta);
         }
     };
 
-    const handleTouchEnd = (e: React.TouchEvent<HTMLCanvasElement>) => {
-        // If transitioning from 2+ fingers to 1 finger, restart the pan
-        if (e.touches.length === 1) {
-            setIsDragging(true);
-            setDragStart({ x: e.touches[0].clientX, y: e.touches[0].clientY });
-        } else {
-            setIsDragging(false);
-        }
+    const handleTouchEnd = () => {
+        setIsDragging(false);
     };
 
     return (
-        <div className="bg-gray-50 dark:bg-gray-900 min-h-screen py-10">
-            <canvas ref={highResCanvasRef} width={HIGH_RES_SIZE} height={HIGH_RES_SIZE} className="hidden" />
+        <div className="bg-gray-50 dark:bg-gray-900 min-h-screen py-20">
             <div className="container mx-auto px-4 sm:px-6 lg:px-8">
                 <div className="text-center mb-12">
-                    <h1 className="text-4xl md:text-5xl font-extrabold text-scout-green dark:text-white tracking-tight">Event Photo Frames</h1>
+                    <h1 className="text-4xl md:text-5xl font-extrabold text-scout-green dark:text-white tracking-tight">Event Frames</h1>
                     <p className="mt-4 max-w-2xl mx-auto text-xl text-gray-600 dark:text-gray-400">
-                        Create a memorable photo with our special event frames!
+                        Create your personalized profile picture with our latest event frames.
                     </p>
+                    {isAdmin && (
+                        <button onClick={() => setIsAddModalOpen(true)} className="mt-6 bg-scout-green text-white font-bold py-3 px-6 rounded-full text-lg hover:bg-opacity-90 transition-transform transform hover:scale-105 duration-300">
+                            + Add New Frame
+                        </button>
+                    )}
                 </div>
 
-                <div className="grid lg:grid-cols-2 gap-12 items-start">
-                    {/* Left Side: Controls & Frames */}
-                    <div className="space-y-8">
-                        {/* Step 1 */}
-                        <div className="bg-white dark:bg-gray-800 p-8 rounded-xl shadow-lg">
-                            <h2 className="text-2xl font-bold text-scout-green dark:text-white mb-2">1. Upload Your Photo</h2>
-                            <p className="text-gray-600 dark:text-gray-400 mb-4">Click below to select a photo from your device.</p>
-                             <input type="file" accept="image/*" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
-                            <button 
-                                onClick={() => fileInputRef.current?.click()}
-                                className="w-full bg-scout-blue text-white font-bold py-3 px-6 rounded-lg text-lg hover:bg-opacity-90 transition-transform transform hover:scale-105 duration-300"
-                            >
-                                Choose Photo
-                            </button>
-                        </div>
-
-                        {/* Step 2 */}
-                        <div className="bg-white dark:bg-gray-800 p-8 rounded-xl shadow-lg">
-                            <div className="flex justify-between items-center mb-4">
-                                <div>
-                                    <h2 className="text-2xl font-bold text-scout-green dark:text-white">2. Select a Frame</h2>
-                                    <p className="text-gray-600 dark:text-gray-400">Pick your favorite frame.</p>
-                                </div>
-                                {isAdmin && (
-                                     <button onClick={() => setIsAddModalOpen(true)} className="bg-scout-green text-white font-bold py-2 px-4 rounded-lg hover:bg-opacity-90 transition-transform transform hover:scale-105 duration-300 text-sm whitespace-nowrap">
-                                        + Add Frame
-                                    </button>
-                                )}
-                            </div>
-                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 max-h-96 overflow-y-auto pr-2">
-                                {eventFrames.map(frame => (
-                                    <div key={frame.id} className="group relative">
-                                        <img 
-                                            src={frame.imageUrl} 
-                                            alt={frame.name}
-                                            onClick={() => setSelectedFrame(frame)}
-                                            className={`w-full h-auto object-cover rounded-lg cursor-pointer border-4 transition-all duration-200 ${selectedFrame?.id === frame.id ? 'border-scout-yellow' : 'border-transparent hover:border-scout-yellow/50'}`} 
-                                        />
-                                        {isAdmin && (
-                                            <div className="absolute top-1 right-1 z-20 flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <button onClick={() => setEditingFrame(frame)} className="bg-scout-blue text-white rounded-full p-1.5 leading-none hover:bg-blue-700" title="Edit frame"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207zm1.586 3L10.5 3.207 4 9.707V12h2.293z"/></svg></button>
-                                                <button onClick={() => {
-                                                    if (window.confirm(`Are you sure you want to delete the frame "${frame.name}"?`)) {
-                                                        deleteEventFrame(frame.id);
-                                                        showNotification('Frame deleted successfully!');
-                                                    }
-                                                }} className="bg-red-600 text-white rounded-full p-1.5 leading-none hover:bg-red-700" title="Delete frame"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5m2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5m3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0z"/><path d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4zM2.5 3V2h11v1z"/></svg></button>
-                                            </div>
-                                        )}
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* Step 3 */}
-                        <div className="bg-white dark:bg-gray-800 p-8 rounded-xl shadow-lg">
-                            <div className="flex justify-between items-center mb-4">
-                                <h2 className="text-2xl font-bold text-scout-green dark:text-white">3. Adjust Your Photo</h2>
-                                <button
-                                    onClick={resetTransforms}
-                                    disabled={!userImage}
-                                    className="text-sm font-semibold text-scout-blue hover:underline disabled:text-gray-400 disabled:no-underline disabled:cursor-not-allowed transition-colors"
-                                >
-                                    Reset
+                <div className="flex flex-col lg:flex-row gap-12">
+                    {/* Left Side: Controls */}
+                    <div className="lg:w-1/3">
+                        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 space-y-6 sticky top-24">
+                            {/* 1. Upload Photo */}
+                            <div>
+                                <h3 className="font-bold text-lg text-gray-800 dark:text-gray-200 mb-2">1. Upload Your Photo</h3>
+                                <button onClick={() => fileInputRef.current?.click()} className="w-full bg-scout-blue text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors">
+                                    {userImage ? 'Change Photo' : 'Select Photo'}
                                 </button>
+                                <input type="file" ref={fileInputRef} onChange={handleFileChange} accept="image/*" className="hidden" />
                             </div>
-                            <div className={`space-y-4 ${!userImage ? 'opacity-50' : ''}`}>
-                                <div>
-                                    <label htmlFor="zoom" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Zoom</label>
-                                    <input
-                                        type="range"
-                                        id="zoom"
-                                        min="0.5"
-                                        max="3"
-                                        step="0.01"
-                                        value={zoom}
-                                        onChange={(e) => setZoom(parseFloat(e.target.value))}
-                                        disabled={!userImage}
-                                        className="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer accent-scout-green disabled:cursor-not-allowed disabled:accent-gray-400"
-                                    />
-                                </div>
-                                <div>
-                                    <label htmlFor="rotation" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Rotate</label>
-                                    <input
-                                        type="range"
-                                        id="rotation"
-                                        min="0"
-                                        max="360"
-                                        step="1"
-                                        value={rotation}
-                                        onChange={(e) => setRotation(parseInt(e.target.value))}
-                                        disabled={!userImage}
-                                        className="w-full h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer accent-scout-green disabled:cursor-not-allowed disabled:accent-gray-400"
-                                    />
-                                </div>
-                            </div>
-                            {!userImage && <p className="text-sm text-gray-500 dark:text-gray-400 mt-4">Upload a photo to adjust its position, zoom, and rotation.</p>}
-                        </div>
-                    </div>
-
-                    {/* Right Side: Preview & Download */}
-                    <div className="lg:sticky top-28">
-                         <div className="bg-white dark:bg-gray-800 p-8 rounded-xl shadow-lg">
-                            <h2 className="text-2xl font-bold text-scout-green dark:text-white mb-4">4. Preview & Download</h2>
-                            <div className="aspect-square bg-gray-200 dark:bg-gray-700 rounded-lg flex items-center justify-center overflow-hidden relative">
-                                {isProcessing && (
-                                    <div className="absolute inset-0 bg-white/70 dark:bg-gray-800/70 flex flex-col items-center justify-center z-10">
-                                        <div className="w-12 h-12 border-4 border-scout-yellow border-t-transparent rounded-full animate-spin"></div>
-                                        <p className="mt-4 text-gray-600 dark:text-gray-300 font-semibold">Generating Image...</p>
+                            
+                            {userImage && (
+                                <>
+                                    {/* 2. Adjust Photo */}
+                                    <div>
+                                        <h3 className="font-bold text-lg text-gray-800 dark:text-gray-200 mb-2">2. Adjust Your Photo</h3>
+                                        <div className="space-y-3">
+                                            <div>
+                                                <label htmlFor="zoom" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Zoom</label>
+                                                <input type="range" id="zoom" min="0.1" max="5" step="0.1" value={zoom} onChange={e => setZoom(Number(e.target.value))} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700 accent-scout-green" />
+                                            </div>
+                                            <div>
+                                                <label htmlFor="rotation" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Rotate</label>
+                                                <input type="range" id="rotation" min="0" max="360" step="1" value={rotation} onChange={e => setRotation(Number(e.target.value))} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700 accent-scout-green" />
+                                            </div>
+                                            <button onClick={resetTransforms} className="w-full text-sm bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200 font-semibold py-2 px-4 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-500 transition-colors">Reset Adjustments</button>
+                                        </div>
                                     </div>
-                                )}
-                                <canvas
-                                    ref={previewCanvasRef}
-                                    width={PREVIEW_SIZE}
-                                    height={PREVIEW_SIZE}
-                                    className={`w-full h-full object-contain touch-none ${userImage ? (isDragging ? 'cursor-grabbing' : 'cursor-grab') : ''}`}
-                                    onMouseDown={handleMouseDown}
-                                    onMouseMove={handleMouseMove}
-                                    onMouseUp={handleMouseUpOrLeave}
-                                    onMouseLeave={handleMouseUpOrLeave}
-                                    onTouchStart={handleTouchStart}
-                                    onTouchMove={handleTouchMove}
-                                    onTouchEnd={handleTouchEnd}
-                                />
+                                </>
+                            )}
+                             {/* 3. Choose Frame */}
+                             <div>
+                                <h3 className="font-bold text-lg text-gray-800 dark:text-gray-200 mb-3">
+                                    {userImage ? '3. Choose Frame' : '2. Choose Frame'}
+                                </h3>
+                                <div className="grid grid-cols-3 gap-3">
+                                    {eventFrames.map(frame => (
+                                        <div key={frame.id} className="relative group">
+                                            <button onClick={() => setSelectedFrame(frame)} className={`w-full aspect-square rounded-lg overflow-hidden border-2 transition-all ${selectedFrame?.id === frame.id ? 'border-scout-green ring-2 ring-scout-green' : 'border-gray-200 dark:border-gray-600'}`}>
+                                                <img src={frame.imageUrl} alt={frame.name} className="w-full h-full object-cover" />
+                                            </button>
+                                             {isAdmin && (
+                                                <div className="absolute top-1 right-1 z-10 flex flex-col space-y-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <button onClick={() => setEditingFrame(frame)} className="bg-scout-blue text-white rounded-full p-1.5 leading-none hover:bg-blue-700" title="Edit Frame">
+                                                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V12h2.293l6.5-6.5z"/></svg>
+                                                    </button>
+                                                    <button onClick={() => {
+                                                        if (window.confirm(`Are you sure you want to delete the frame "${frame.name}"?`)) {
+                                                            deleteEventFrame(frame.id);
+                                                            showNotification('Frame deleted successfully!');
+                                                        }
+                                                    }} className="bg-red-600 text-white rounded-full p-1.5 leading-none hover:bg-red-700" title="Delete Frame">
+                                                         <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/><path fillRule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/></svg>
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
-                            <button
+
+                            {/* 4. Download */}
+                            <button 
                                 onClick={handleDownload}
-                                disabled={!userImage || isProcessing}
-                                className="mt-6 w-full bg-scout-yellow text-gray-900 font-bold py-3 px-6 rounded-lg text-lg transition-all duration-300 disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed disabled:scale-100 hover:bg-yellow-400 transform hover:scale-105"
+                                disabled={!userImage || !selectedFrame || isProcessing}
+                                className="w-full bg-scout-yellow text-gray-900 font-bold py-3 px-6 rounded-lg text-lg hover:bg-yellow-400 transition-all duration-300 disabled:bg-gray-300 dark:disabled:bg-gray-600 disabled:cursor-not-allowed disabled:transform-none transform hover:scale-105"
                             >
-                                {isProcessing ? 'Processing...' : 'Download Photo (HD)'}
+                                {isProcessing ? 'Processing...' : 'Download Image'}
                             </button>
                         </div>
                     </div>
+
+                    {/* Right Side: Preview */}
+                    <div className="lg:w-2/3">
+                        <div className="aspect-square w-full max-w-2xl mx-auto relative">
+                            <canvas
+                                ref={previewCanvasRef}
+                                width={PREVIEW_SIZE}
+                                height={PREVIEW_SIZE}
+                                className="w-full h-full rounded-lg shadow-lg bg-gray-200 dark:bg-gray-700 touch-none"
+                                onMouseDown={handleMouseDown}
+                                onMouseMove={handleMouseMove}
+                                onMouseUp={handleMouseUpOrLeave}
+                                onMouseLeave={handleMouseUpOrLeave}
+                                onTouchStart={handleTouchStart}
+                                onTouchMove={handleTouchMove}
+                                onTouchEnd={handleTouchEnd}
+                            />
+                            {isProcessing && (
+                                 <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center rounded-lg text-white">
+                                     <div className="w-12 h-12 border-4 border-white border-t-transparent rounded-full animate-spin"></div>
+                                     <p className="mt-4 font-semibold text-lg">Generating your image...</p>
+                                 </div>
+                             )}
+                        </div>
+                    </div>
                 </div>
+
+                {/* Hidden canvas for high-res rendering */}
+                <canvas ref={highResCanvasRef} width={HIGH_RES_SIZE} height={HIGH_RES_SIZE} className="hidden" />
+
+                {/* Admin Modals */}
+                {isAddModalOpen && <AddFrameModal onClose={() => setIsAddModalOpen(false)} />}
+                {editingFrame && <EditFrameModal frame={editingFrame} onClose={() => setEditingFrame(null)} />}
             </div>
-            {isAddModalOpen && <AddFrameModal onClose={() => setIsAddModalOpen(false)} />}
-            {editingFrame && <EditFrameModal frame={editingFrame} onClose={() => setEditingFrame(null)} />}
         </div>
     );
 };
